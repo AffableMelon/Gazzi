@@ -27,8 +27,8 @@ The pipeline is currently under development and meant to eventually feed into an
 - Python Version 3.10.19+
 - Install dependencies: `pip install -r requirements.txt`.
 - Try running the pipeline: `python -m src.core.pipeline`.
-    - Optionally you can pass in the path to the file in args as `python -m src.core.pipeline ./path/to/file_from_root_dir`
-- Inspect intermediate images in `data/processed/images/` and outputs in `data/output/`.
+    - Scans the data/raw directory for any pdf files.
+- Inspect intermediate images in `data/processed/images/` and outputs in `data/processed/json`.
 
 ---
 
