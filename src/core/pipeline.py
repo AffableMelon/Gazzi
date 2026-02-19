@@ -129,7 +129,7 @@ if __name__ == "__main__":
     import sys
     pipeline = OCRPipeline()
     input_dir = Path("./data/raw")
-    output_dir = Path("./data/processed/json")
+    output_dir = Path("./data/output")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for pdf_path in sorted(input_dir.iterdir()):
