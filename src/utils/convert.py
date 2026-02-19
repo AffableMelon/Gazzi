@@ -137,65 +137,75 @@ def _remove_noise_blobs(binary_image, min_area=30):
     return cleaned
 
 
-def find_column_gutter(image):
+def find_column_divider_line(image):
     """
-    Find the vertical gutter between two text columns using
-    vertical projection profile (sum of white pixels per column).
+    Detect the vertical ruling line between columns using morphology.
 
-    Returns the x-coordinate of the gutter center.
-    Falls back to midpoint if no clear gutter is found.
+    This finds actual printed lines, not text gaps.
+    Works on both dense and sparse pages because the line
+    is always present regardless of text content.
     """
     h, w = image.shape[:2]
 
-    # Only search the middle 30% of the image width for the gutter
-    search_left = int(w * 0.35)
-    search_right = int(w * 0.65)
+    # --- Step 1: Isolate vertical line structures ---
 
-    # Vertical projection: count white pixels in each column
-    # (in a binary image, white=255 is background)
+    vertical_kernel_height = h // 4  # must be at least 25% of page height
+    vertical_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (1, vertical_kernel_height)  # 1px wide, very tall
+    )
+
+    # Ensure we work with dark-on-white (invert if needed)
     if np.mean(image) > 127:
-        # White background, dark text
-        projection = np.sum(image[:, search_left:search_right] == 255, axis=0)
+        work = cv2.bitwise_not(image)  # now lines are white on black
     else:
-        projection = np.sum(image[:, search_left:search_right] == 0, axis=0)
+        work = image.copy()
 
-    # Smooth the projection to avoid noise
-    kernel_size = max(15, w // 50)
-    if kernel_size % 2 == 0:
-        kernel_size += 1
-    smoothed = cv2.GaussianBlur(projection.astype(np.float32).reshape(1, -1),
-                                 (kernel_size, 1), 0).flatten()
+    # Morphological opening: erode then dilate
+    # This REMOVES everything that isn't tall and narrow
+    # Text disappears. Only vertical lines survive.
+    vertical_lines = cv2.morphologyEx(work, cv2.MORPH_OPEN, vertical_kernel)
 
-    # The gutter is where projection is maximum (most white/background pixels)
-    gutter_local = np.argmax(smoothed)
-    gutter_x = search_left + gutter_local
+    # --- Step 2: Search only the middle region ---
+    search_left = int(w * 0.30)
+    search_right = int(w * 0.70)
+    search_region = vertical_lines[:, search_left:search_right]
 
-    # Validate: the gutter should have significantly more background than
-    # the text regions. If not, fall back to midpoint.
-    gutter_value = smoothed[gutter_local]
-    mean_value = np.mean(smoothed)
-    if gutter_value < mean_value * 1.1:
-        # No clear gutter found — fall back
-        return w // 2
+    # --- Step 3: Project vertically (sum each column) ---
+    # The divider line will have a strong peak
+    projection = np.sum(search_region > 0, axis=0)
 
-    return gutter_x
+    # --- Step 4: Find the strongest peak ---
+    if np.max(projection) < h * 0.10:
+        # No vertical line found that spans at least 10% of page
+        # Fall back to midpoint
+        return w // 2, False  # (x_position, was_line_found)
+
+    # The peak in the projection = the divider line's x position
+    line_local_x = np.argmax(projection)
+    line_x = search_left + line_local_x
+
+    return line_x, True  # (x_position, was_line_found)
 
 
 def split_image_columns(image: np.ndarray):
-    """
-    Split image into two columns using detected gutter position.
-    Adds a small margin around the gutter to avoid cutting into text.
-    """
     h, w = image.shape[:2]
-    gutter_x = find_column_gutter(image)
 
-    # Add margin around gutter (don't cut into edge characters)
-    margin = max(10, w // 100)
-    left_img = image[:, :max(0, gutter_x - margin)]
-    right_img = image[:, min(w, gutter_x + margin):]
+    line_x, found_line = find_column_divider_line(image)
+
+    if found_line:
+        # Include the line in both halves (overlap by a few pixels)
+        overlap = 3  # pixels of overlap on each side of the line
+        left_img = image[:, :min(w, line_x + overlap)]
+        right_img = image[:, max(0, line_x - overlap):]
+    else:
+        # No line found — fall back to midpoint with small overlap
+        mid = w // 2
+        overlap = 5
+        left_img = image[:, :min(w, mid + overlap)]
+        right_img = image[:, max(0, mid - overlap):]
 
     return left_img, right_img
-
 
 def find_header_boundary(image):
     """
@@ -287,23 +297,33 @@ def upscale_if_needed(image, min_height_per_line=40, estimated_lines=50):
 
 
 def main():
-    pdf_path = Path("./data/raw/አዋጅ ቁጥር 23-1988(Kibreab).pdf")
+    input_dir = Path("./data/raw")
     output_dir = Path("./data/processed/images")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    match = re.search(r"አዋጅ.*\.pdf", pdf_path.name)
-    if match:
-        clean_base = re.sub(r"[\s\.\(\)]+", "_", match.group(0).replace(".pdf", ""))
-    else:
-        clean_base = pdf_path.stem
+    for pdf_path in sorted(input_dir.iterdir()):
+        if not pdf_path.is_file() or pdf_path.suffix.lower() != ".pdf":
+            continue
 
-    images = pdf_to_images(pdf_path)
+        match = re.search(r"አዋጅ.*\.pdf", pdf_path.name)
+        if match:
+            clean_base = re.sub(r"[\s\.\(\)]+", "_", match.group(0).replace(".pdf", ""))
+        else:
+            clean_base = pdf_path.stem
 
-    for i, pil_img in enumerate(images):
-        processed_img = preprocess_image(pil_img)
-        filename = str(output_dir / f"{clean_base}_{i}.png")
-        cv2.imwrite(filename, processed_img)
-        print(f"Saved {filename} ({processed_img.shape[1]}x{processed_img.shape[0]})")
+        try:
+            images = pdf_to_images(str(pdf_path))
+        except Exception as e:
+            print(f"Failed to convert {pdf_path}: {e}")
+            continue
+
+        for i, pil_img in enumerate(images):
+            processed_img = preprocess_image(pil_img)
+            filename = str(output_dir / f"{clean_base}_{i}")
+            l, r = split_image_columns(processed_img)
+            cv2.imwrite(f"{filename}_left.png", l)
+            cv2.imwrite(f"{filename}_right.png", r)
+            print(f"Saved {filename} ({processed_img.shape[1]}x{processed_img.shape[0]})")
 
 
 if __name__ == "__main__":

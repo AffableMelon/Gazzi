@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from src.core.doc_processor import DocProcessor
@@ -126,27 +127,29 @@ class OCRPipeline:
 # --- CLI entry point ---
 if __name__ == "__main__":
     import sys
-
-    if len(sys.argv) > 1:
-        input_file = sys.argv[1]
-    else:
-        input_file = "./data/raw/አዋጅ ቁጥር 23-1988(Kibreab).pdf"
-
-    output_path = Path("./data/output/output.json")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"Processing: {input_file}")
     pipeline = OCRPipeline()
-    result = pipeline.run(input_file)
+    input_dir = Path("./data/raw")
+    output_dir = Path("./data/processed/json")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    for pdf_path in sorted(input_dir.iterdir()):
+        if not pdf_path.is_file() or pdf_path.suffix.lower() != ".pdf":
+            continue
 
-    print(f"Output written to: {output_path}")
-    print(f"Pages processed: {result['page_count']}")
-    print(f"Total lines: {result['line_count']}")
+        match = re.search(r"አዋጅ.*\.pdf", pdf_path.name)
+        if match:
+            clean_base = re.sub(r"[\s\.\(\)]+", "_", match.group(0).replace(".pdf", ""))
+        else:
+            clean_base = pdf_path.stem
 
-    # Print preview
-    print("\n--- Preview (first 30 lines) ---")
-    for line in result["lines"][:30]:
-        print(line)
+        try:
+            result = pipeline.run(pdf_path)
+            with open(f"{output_dir}/{clean_base}.json", "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            print(f"Failed to convert {pdf_path}: {e}")
+            continue
+        
+        print(f"Output written to {output_dir}/{clean_base}.json")
+        print(f"Total lines: {result['line_count']}")
