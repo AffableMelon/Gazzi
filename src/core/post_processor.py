@@ -43,14 +43,77 @@ class PostProcessor:
         r'^[A-Za-z]{1}$',           # Single Latin letter on its own line
         r'^\d{1,2}$',               # Isolated 1-2 digit numbers (usually noise)
         r'^[\"\'\`\~\^]+$',         # Lines of only quotes/symbols
+        r'^[c\.\s\-]{10,}$',             # Long lines of dots/c characters (TOC artifacts)
+        r'^[Yy]\.\d{1,2}.*$',             # OCR-glitched footer page numbers (e.g., Y.24F DUM)
+        r'^[A-Z0-9]{10,}\s[A-Z0-9\.]{5,}$',  # Lines of all caps with long "words" (likely noise)
     ]
+
+    TERMINAL_ANCHORS_AMHARIC = [
+        r'ፕሬዚዳንት',        # President
+        r'ጠቅላይ ሚኒስትር',   # Prime Minister
+        r'ነጋሶ ጊዳዳ',       # Negaso Gidada
+        r'መለስ ዜናዊ',       # Meles Zenawi
+        r'ኃይለማርያም ደሳለኝ' # Hailemariam Desalegn (for later dates)
+    ]
+
+    TERMINAL_ANCHORS_ENGLISH = [
+        r'PRESIDENT OF THE',
+        r'PRIME MINISTER OF',
+        r'NEGASO GIDADA',
+        r'MELES ZENAWI',
+        r'DONE AT ADDIS ABABA'
+    ]
+
+    HARD_STOP_ANCHORS = [
+        r'RINTING ENTERPRISE',
+        r'ብርሃንና ሰላም',
+        r'ማተሚያ ቤት',
+        r'PRINTING PRESS'
+    ]
+
+    def truncate_tail_noise(self, text: str, lang: str = 'eng') -> str:
+        lines = text.split('\n')
+        anchors = self.TERMINAL_ANCHORS_ENGLISH if lang == 'eng' else self.TERMINAL_ANCHORS_AMHARIC
+        
+        cutoff_index = len(lines)
+
+        for i, line in enumerate(lines):
+            # 1. Check for HARD STOPS (Printer marks) - Cut IMMEDIATELY
+            if any(re.search(stop, line, re.IGNORECASE) for stop in self.HARD_STOP_ANCHORS):
+                return '\n'.join(lines[:i]) # No buffer allowed for printer marks
+
+            # 2. Check for SIGNATURES (President/PM) - Use buffer
+            if any(re.search(anchor, line, re.IGNORECASE) for anchor in anchors):
+                # Only update if we haven't found a cut-off point yet
+                potential_cut = i + 2 # Reduced buffer to 2 lines
+                cutoff_index = min(cutoff_index, potential_cut)
+        
+        return '\n'.join(lines[:cutoff_index])
+
+    # def truncate_tail_noise(self, lines, lang='en') -> list:
+    #     """
+    #     Finds the last legitimate signature line and cuts off all OCR noise below it.
+    #     """
+    #     anchors = self.TERMINAL_ANCHORS_ENGLISH if lang == 'en' else self.TERMINAL_ANCHORS_AMHARIC
+    #     cutoff_index = len(lines)
+        
+    #     for i, line in enumerate(lines):
+    #         # Check if the line contains any of our terminal anchors
+    #         if any(re.search(anchor, line, re.IGNORECASE) for anchor in anchors):
+    #             # We found the signature! 
+    #             # Allow up to 3 lines after this to catch "President of..." or the date.
+    #             cutoff_index = i + 4 
+    #             break 
+            
+    #     print(f"Truncating lines after index {cutoff_index} based on terminal anchors.")
+    #     return lines[:cutoff_index]
 
     def clean(self, text: str, lang: str = None) -> str:
         """
         Clean OCR output text.
 
         :param text: raw OCR text
-        :param lang: 'eng', 'amh', or None (auto)
+        :param lang: 'eng', 'amh', or None (auto),
         :returns: cleaned text
         """
         if not text:
