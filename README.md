@@ -100,33 +100,6 @@ They will appear automatically in the document dropdown on page reload.
 
 ---
 
-## Project Structure
-
-```text
-├── app/
-│   ├── api/routes.py              # FastAPI endpoints (upload, session, audit, export)
-│   ├── frontend/src/
-│   │   ├── App.tsx                # Verification workbench UI (React + Tailwind)
-│   │   ├── api.ts                 # Typed API client
-│   │   └── types.ts               # Data models
-│   ├── services/
-│   │   ├── gazette_pipeline.py    # Dual-column column segmentation & extraction
-│   │   ├── dual_code_pipeline.py  # Separate Amharic/English book alignment
-│   │   ├── audit_service.py       # Quality heuristics & match scoring
-│   │   ├── pdf_extractor.py       # PyMuPDF page rendering & OCR fallback
-│   │   └── storage_service.py     # Session persistence & precomputed loader
-│   ├── config.py                  # Paths and environment variables
-│   └── main.py                    # FastAPI application entry point
-├── data/
-│   ├── precomputed/               # Sample PDFs and pre-extracted JSON pairs
-│   ├── exports/                   # Verified corpus exports
-│   └── hil_sessions/              # Active session states
-├── run_pipeline.py                # Standalone CLI runner
-└── README.md
-```
-
----
-
 ## CLI Runner
 
 You can also run extraction directly from the terminal:
