@@ -1,4 +1,4 @@
-# Ethiopian Legal AI - Human-in-the-Loop Alignment Pipeline
+# GAZZI - Human-in-the-Loop Alignment Pipeline
 
 A human-in-the-loop (HIL) alignment tool for Ethiopian legal documents (Negarit Gazettes and bilingual codebooks). It extracts parallel Amharic and English legal texts, aligns them by article or section, and provides a web workbench for visual review against the original scanned PDF pages.
 
